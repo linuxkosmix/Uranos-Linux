@@ -1,0 +1,2 @@
+# Uranos-Linux
+Uranos Linux, your new system and your own sky. Uranos works after you type the password. System configuring by you on the installation stage and save Uran.conf file that help you reinstall system with your packages. Uranos using package manager Aquanaut. 
