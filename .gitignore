@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Uranos local images and helper scripts
+*.[iI][sS][oO]
+scripts/
+aqua.py

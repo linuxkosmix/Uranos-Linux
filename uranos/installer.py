@@ -1,5 +1,6 @@
 """Privileged installer. Only usable from Uranos live media; stdin carries secrets."""
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,8 @@ from .model import Recipe, DESKTOPS
 from .branding import apply_branding
 
 ENV = dict(os.environ, PATH='/usr/bin:/usr/sbin', LC_ALL='C.UTF-8')
+AQUANAUT_PACKAGE = Path('/usr/share/uranos/packages/aquanaut-0.1.0-1-x86_64.pkg.tar.zst')
+AQUANAUT_SHA256 = '2a1c9e2434fbb366901edabdf142cb9cb7e4ff2d3653ded1f35f13bbae6adb4a'
 
 def run(*argv, input=None, capture=False):
     if input is None:
@@ -142,6 +145,11 @@ def install(request):
     if r.snapshots: packages+=['snapper']
     packages=list(dict.fromkeys(packages))
     # Resolve all package names before changing the target. Signature verification remains enabled.
+    # Check the bundled package before any destructive disk operation.
+    with AQUANAUT_PACKAGE.open('rb') as package_file:
+        if hashlib.file_digest(package_file, 'sha256').hexdigest() != AQUANAUT_SHA256:
+            raise RuntimeError('Пакет Aquanaut в образе повреждён.')
+    run('pacman','-T','python','pacman','libalpm.so=16-64')
     run('pacman','-Sy','--noconfirm')
     run('pacman','-Sp','--print-format','%n',*packages, capture=True)
     if request['disk'] not in disks(): raise RuntimeError('Диск стал занят до начала установки.')
@@ -177,6 +185,9 @@ def install(request):
         run('pacstrap','-K',target,*packages)
         write(target,'etc/fstab',run('genfstab','-U',target,capture=True))
         def ch(*args,**kw): return run('arch-chroot',target,*args,**kw)
+        package_cache=target/'var/cache/pacman/pkg'; package_cache.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(AQUANAUT_PACKAGE,package_cache/AQUANAUT_PACKAGE.name)
+        ch('pacman','-U','--noconfirm','/var/cache/pacman/pkg/'+AQUANAUT_PACKAGE.name)
         apply_branding(target)
         write(target,'etc/hostname','uranos\n')
         write(target,'etc/locale.gen','en_US.UTF-8 UTF-8\nru_RU.UTF-8 UTF-8\n')
@@ -202,7 +213,7 @@ def install(request):
         write(target,'etc/sddm.conf.d/uranos.conf','[Users]\nRememberLastUser=true\n[General]\nDefaultSession=plasma.desktop\n')
         ch('systemctl','enable','NetworkManager','sddm','systemd-timesyncd')
         ch('systemctl','set-default','graphical.target')
-        write(target,'etc/default/grub',f'GRUB_DEFAULT=0\nGRUB_TIMEOUT={r.boot_timeout}\nGRUB_DISTRIBUTOR="Uranos Vanilla"\nGRUB_CMDLINE_LINUX_DEFAULT="quiet"\nGRUB_DISABLE_OS_PROBER=true\n')
+        write(target,'etc/default/grub',f'GRUB_DEFAULT=0\nGRUB_TIMEOUT={r.boot_timeout}\nGRUB_DISTRIBUTOR="Uranos Linux"\nGRUB_CMDLINE_LINUX_DEFAULT="quiet"\nGRUB_DISABLE_OS_PROBER=true\n')
         ch('mkinitcpio','-P')
         if mode=='uefi':
             ch('grub-install','--target=x86_64-efi','--efi-directory=/efi','--bootloader-id=Uranos','--removable','--no-nvram')
